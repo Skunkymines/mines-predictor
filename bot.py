@@ -48,7 +48,7 @@ async def handle_mine_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
 def main():
     import os
-    TOKEN = "8223512483:AAGEEBnxiflEq_o63PXpF3pPupb3FQjEMCU"
+    TOKEN = "8221754018:AAFSFAfm7gtUBasNIrILTawvXsuNdjMxcoE"
 
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -61,3 +61,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
