@@ -1,73 +1,64 @@
-import random
-import hashlib
-import json
+import logging
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters,
+)
+from mine_predictor import predict_mines, render_board
 
-GRID_SIZE = 5  # 5x5 board
+logging.basicConfig(level=logging.INFO)
 
+# Dictionary to store per-user seed
+user_seeds = {}
 
-def get_deterministic_rng(seed_str: str) -> random.Random:
-    """Create a deterministic random generator using SHA-256 hash of the seed."""
-    seed_hash = hashlib.sha256(seed_str.encode()).hexdigest()
-    return random.Random(int(seed_hash, 16))
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔐 Please enter your unhashed server seed:")
+    return
 
+async def handle_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    server_seed = update.message.text.strip()
+    user_seeds[user_id] = server_seed
 
-def predict_mines(server_seed: str, mine_count: int) -> list:
-    """
-    Predict mine positions using a deterministic RNG based on server seed.
-    Returns a list of (row, col) tuples.
-    """
-    all_tiles = [(i, j) for i in range(GRID_SIZE) for j in range(GRID_SIZE)]
-    rng = get_deterministic_rng(server_seed)
-    return rng.sample(all_tiles, mine_count)
+    # Show inline keyboard for mine count
+    keyboard = [[InlineKeyboardButton(f"{i} Mines", callback_data=str(i))] for i in range(1, 7)]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("🧮 Select number of mines:", reply_markup=reply_markup)
 
+async def handle_mine_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-def render_board(mines: list, reveal_all: bool = True) -> str:
-    """
-    Render the 5x5 Mines board with emoji:
-    💣 for mines, 🟩 for safe tiles.
-    If reveal_all is False, hides all tiles as ❓.
-    """
-    board = ""
-    for i in range(GRID_SIZE):
-        for j in range(GRID_SIZE):
-            if reveal_all:
-                board += "💣" if (i, j) in mines else "🟩"
-            else:
-                board += "❓"
-        board += "\n"
-    return board
+    user_id = query.from_user.id
+    mine_count = int(query.data)
+    server_seed = user_seeds.get(user_id)
 
+    # Show loading message
+    await query.edit_message_text("🔄 Predicting mines, please wait...")
 
-def get_board_structure(mines: list) -> list:
-    """
-    Returns a nested list structure representing the board with:
-    'M' for mine, 'S' for safe.
-    """
-    board = []
-    for i in range(GRID_SIZE):
-        row = []
-        for j in range(GRID_SIZE):
-            row.append("M" if (i, j) in mines else "S")
-        board.append(row)
-    return board
+    # Predict mines
+    mines = predict_mines(server_seed, mine_count)
+    board = render_board(mines)
 
+    await context.bot.send_message(chat_id=query.message.chat_id, text=f"🎯 Predicted Board with {mine_count} mines:\n\n{board}")
 
-def debug_board_output(seed: str, mine_count: int):
-    """
-    Debug function to show rendered board and JSON.
-    """
-    mines = predict_mines(seed, mine_count)
-    print(f"🔐 Server Seed: {seed}")
-    print(f"💣 Mine Count: {mine_count}\n")
-    print("🎮 Rendered Board:")
-    print(render_board(mines))
+def main():
+    import os
+    TOKEN = "8221754018:AAFSFAfm7gtUBasNIrILTawvXsuNdjMxcoE"
 
-    print("📦 JSON Data:")
-    print(json.dumps(get_board_structure(mines), indent=2))
+    app = ApplicationBuilder().token(TOKEN).build()
 
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_seed))
+    app.add_handler(CallbackQueryHandler(handle_mine_selection))
 
-# Debug run example
+    print("✅ Bot running...")
+    app.run_polling()
+
 if __name__ == "__main__":
-    test_seed = "b4470ea52ee0d0b7a329d333aaf41525f8b670ddde07a4a99c99037aa20cc7f0"
-    test_mines = 5
-    debug_board_output(test_seed, test_mines)
+    main()
+
